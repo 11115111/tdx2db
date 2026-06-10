@@ -13,3 +13,4 @@ block_rps:
   threshold: 90
   required_count: 3
   preferred_block_type: '概念'
+  max_member_count: 100   # 成员超过此数的板块视为过宽泛，排除出 RPS 排名

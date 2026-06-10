@@ -52,6 +52,7 @@ def main(
 ) -> None:
     cfg = _load_cfg(Path(cfg_path))
     szh_cfg = cfg["sanxianhong"]
+    max_member = cfg.get("block_rps", {}).get("max_member_count", 100)
 
     con = get_connection(db)
     init_tables(con)
@@ -68,8 +69,8 @@ def main(
         n = calc_stock_rps_history(con, start_date, end_date)
         click.echo(f"  inserted {n} rows into rps_stock_daily")
 
-        click.echo(f"[block RPS] history {start_date} → {end_date}")
-        n = calc_block_rps_history(con, start_date, end_date)
+        click.echo(f"[block RPS] history {start_date} → {end_date} (max_member={max_member})")
+        n = calc_block_rps_history(con, start_date, end_date, max_member_count=max_member)
         click.echo(f"  inserted {n} rows into rps_block_daily")
 
         if not skip_sanxianhong:
@@ -96,8 +97,8 @@ def main(
         n = calc_stock_rps(con, target_date)
         click.echo(f"  {n} rows")
 
-        click.echo(f"[block RPS] {target_date}")
-        n = calc_block_rps(con, target_date)
+        click.echo(f"[block RPS] {target_date} (max_member={max_member})")
+        n = calc_block_rps(con, target_date, max_member_count=max_member)
         click.echo(f"  {n} rows")
 
         if not skip_sanxianhong:

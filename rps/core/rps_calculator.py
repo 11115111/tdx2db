@@ -108,6 +108,7 @@ WITH block_members AS (
     LEFT JOIN raw_symbol_name  sn ON sn.symbol = bm.stock_symbol
     WHERE {block_filter}
     GROUP BY bm.block_code, bi.block_name, bi.block_type, bd.date
+    HAVING COUNT(bd.symbol) <= {max_member_count}
 ),
 block_returns AS (
     SELECT
@@ -151,15 +152,15 @@ SELECT
 FROM ranked r
 """
 
-_SQL_BLOCK_RPS_SINGLE = _BLOCK_RPS_CTE.format(
-    block_filter=_BLOCK_FILTER,
-    date_filter="date = $target_date",
-)
+_DEFAULT_MAX_MEMBER = 100
 
-_SQL_BLOCK_RPS_HISTORY = _BLOCK_RPS_CTE.format(
-    block_filter=_BLOCK_FILTER,
-    date_filter="date BETWEEN $start_date AND $end_date",
-)
+
+def _block_sql(date_filter: str, max_member_count: int) -> str:
+    return _BLOCK_RPS_CTE.format(
+        block_filter=_BLOCK_FILTER,
+        date_filter=date_filter,
+        max_member_count=max_member_count,
+    )
 
 
 def calc_stock_rps(con: duckdb.DuckDBPyConnection, target_date: str) -> int:
@@ -181,8 +182,13 @@ def calc_stock_rps_history(
     return row[0] if row else 0
 
 
-def calc_block_rps(con: duckdb.DuckDBPyConnection, target_date: str) -> int:
-    con.execute(_SQL_BLOCK_RPS_SINGLE, {"target_date": target_date})
+def calc_block_rps(
+    con: duckdb.DuckDBPyConnection,
+    target_date: str,
+    max_member_count: int = _DEFAULT_MAX_MEMBER,
+) -> int:
+    sql = _block_sql("date = $target_date", max_member_count)
+    con.execute(sql, {"target_date": target_date})
     row = con.execute(
         "SELECT COUNT(*) FROM rps_block_daily WHERE trade_date = $1", [target_date]
     ).fetchone()
@@ -190,9 +196,13 @@ def calc_block_rps(con: duckdb.DuckDBPyConnection, target_date: str) -> int:
 
 
 def calc_block_rps_history(
-    con: duckdb.DuckDBPyConnection, start_date: str, end_date: str
+    con: duckdb.DuckDBPyConnection,
+    start_date: str,
+    end_date: str,
+    max_member_count: int = _DEFAULT_MAX_MEMBER,
 ) -> int:
-    con.execute(_SQL_BLOCK_RPS_HISTORY, {"start_date": start_date, "end_date": end_date})
+    sql = _block_sql("date BETWEEN $start_date AND $end_date", max_member_count)
+    con.execute(sql, {"start_date": start_date, "end_date": end_date})
     row = con.execute(
         "SELECT COUNT(*) FROM rps_block_daily WHERE trade_date BETWEEN $1 AND $2",
         [start_date, end_date],

@@ -8,8 +8,12 @@ import duckdb
 import pandas as pd
 import pytest
 
-from rps.core.db import init_tables
-from rps.core.rps_calculator import calc_stock_rps, calc_block_rps
+from rps.core.db import init_tables, refresh_block_member_count, refresh_stock_pool
+from rps.core.rps_calculator import (
+    calc_block_daily_pct,
+    calc_stock_rps,
+    calc_block_rps,
+)
 from rps.core.sanxianhong import calc_sanxianhong
 
 
@@ -82,6 +86,10 @@ def _seed_data(c: duckdb.DuckDBPyConnection) -> None:
         c.execute(f"INSERT INTO raw_tdx_blocks_member VALUES ('{s}', 'BK001')")
     for s in symbols[2:]:
         c.execute(f"INSERT INTO raw_tdx_blocks_member VALUES ('{s}', 'BK002')")
+
+    # Populate static caches that queries depend on
+    refresh_block_member_count(c)
+    refresh_stock_pool(c)
 
     # Create the views that the calculator reads from
     c.execute("""
@@ -164,12 +172,14 @@ def test_no_future_leak(con):
 
 def test_calc_block_rps(con):
     target = "2023-06-01"
+    calc_block_daily_pct(con, target)
     n = calc_block_rps(con, target)
     assert n > 0
 
 
 def test_block_rps_range(con):
     target = "2023-06-01"
+    calc_block_daily_pct(con, target)
     calc_block_rps(con, target)
     rows = con.execute(
         "SELECT bkrps5 FROM rps_block_daily WHERE trade_date = ?", [target]

@@ -1,3 +1,30 @@
+-- 板块成员数缓存，随 raw_tdx_blocks_member 更新时刷新，供 RPS 查询过滤大板块
+CREATE TABLE IF NOT EXISTS block_member_count (
+    block_code   VARCHAR PRIMARY KEY,
+    member_count INTEGER NOT NULL,
+    updated_at   TIMESTAMP DEFAULT current_timestamp
+);
+
+-- 合格股票池缓存：排除 ST/退市/北交所/B股，随股票名称/分类数据更新时刷新
+CREATE TABLE IF NOT EXISTS stock_pool (
+    symbol VARCHAR PRIMARY KEY,
+    name   VARCHAR
+);
+
+-- 板块每日涨跌幅缓存：每日 raw_basic_daily 写入后刷新一次
+-- block RPS 的多周期复合收益率仅基于此表做窗口函数，无需再扫大表
+CREATE TABLE IF NOT EXISTS block_daily_pct (
+    trade_date    DATE    NOT NULL,
+    block_code    VARCHAR NOT NULL,
+    block_name    VARCHAR,
+    block_type    VARCHAR,
+    block_pct_1d  DOUBLE,
+    member_count  INTEGER,
+    rising_count  INTEGER,
+    limit_up_count INTEGER,
+    PRIMARY KEY (trade_date, block_code)
+);
+
 CREATE TABLE IF NOT EXISTS rps_stock_daily (
     trade_date DATE NOT NULL,
     symbol VARCHAR NOT NULL,
@@ -20,13 +47,6 @@ CREATE TABLE IF NOT EXISTS rps_block_daily (
     block_pct_1d DOUBLE, block_pct_5d DOUBLE, block_pct_10d DOUBLE, block_pct_20d DOUBLE,
     member_count INTEGER, rising_count INTEGER, limit_up_count INTEGER,
     PRIMARY KEY (trade_date, block_code)
-);
-
--- 板块成员数缓存，随 raw_tdx_blocks_member 更新时刷新，供 RPS 查询过滤大板块
-CREATE TABLE IF NOT EXISTS block_member_count (
-    block_code   VARCHAR PRIMARY KEY,
-    member_count INTEGER NOT NULL,
-    updated_at   TIMESTAMP DEFAULT current_timestamp
 );
 
 CREATE TABLE IF NOT EXISTS sanxianhong_daily (

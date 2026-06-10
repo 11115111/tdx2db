@@ -5,8 +5,7 @@ _SQL_CREATE = (Path(__file__).parent.parent / "sql" / "01_create_tables.sql").re
 
 
 def get_connection(db_path: str) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(db_path)
-    return con
+    return duckdb.connect(db_path)
 
 
 def init_tables(con: duckdb.DuckDBPyConnection) -> None:
@@ -19,7 +18,7 @@ def init_tables(con: duckdb.DuckDBPyConnection) -> None:
 def refresh_block_member_count(con: duckdb.DuckDBPyConnection) -> int:
     """Recount members per block from raw_tdx_blocks_member and upsert cache.
 
-    Call this after block data is synced. Returns number of blocks updated.
+    Call after block data is synced. Returns number of blocks updated.
     """
     con.execute("""
         INSERT OR REPLACE INTO block_member_count (block_code, member_count, updated_at)
@@ -28,4 +27,25 @@ def refresh_block_member_count(con: duckdb.DuckDBPyConnection) -> int:
         GROUP BY block_code
     """)
     row = con.execute("SELECT COUNT(*) FROM block_member_count").fetchone()
+    return row[0] if row else 0
+
+
+def refresh_stock_pool(con: duckdb.DuckDBPyConnection) -> int:
+    """Rebuild eligible stock pool: excludes ST, delisted, BSE (8x), B-shares (9x), 三板 (4x).
+
+    Call after raw_symbol_name or raw_symbol_class is updated. Returns pool size.
+    """
+    con.execute("""
+        INSERT OR REPLACE INTO stock_pool (symbol, name)
+        SELECT s.symbol, n.name
+        FROM raw_symbol_class s
+        LEFT JOIN raw_symbol_name n ON n.symbol = s.symbol
+        WHERE s.class = 'stock'
+          AND COALESCE(n.name, '') NOT LIKE '%ST%'
+          AND COALESCE(n.name, '') NOT LIKE '%退%'
+          AND s.symbol NOT LIKE '8%'
+          AND s.symbol NOT LIKE '4%'
+          AND s.symbol NOT LIKE '9%'
+    """)
+    row = con.execute("SELECT COUNT(*) FROM stock_pool").fetchone()
     return row[0] if row else 0

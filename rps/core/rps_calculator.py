@@ -87,7 +87,13 @@ _SQL_STOCK_RPS_HISTORY = _STOCK_RPS_CTE.format(
 )
 
 _BLOCK_RPS_CTE = """
-WITH block_members AS (
+WITH eligible_blocks AS (
+    SELECT block_code
+    FROM raw_tdx_blocks_member
+    GROUP BY block_code
+    HAVING COUNT(*) <= {max_member_count}
+),
+block_members AS (
     SELECT
         bm.block_code,
         bi.block_name,
@@ -102,13 +108,13 @@ WITH block_members AS (
                 ELSE (CASE WHEN bd.change_pct >= 9.7 THEN 1 ELSE 0 END)
             END)                                                             AS limit_up_count
     FROM raw_tdx_blocks_member bm
+    JOIN eligible_blocks       eb ON eb.block_code = bm.block_code
     JOIN raw_tdx_blocks_info   bi ON bi.block_code = bm.block_code
     JOIN raw_basic_daily       bd ON bd.symbol = bm.stock_symbol
     JOIN raw_symbol_class      sc ON sc.symbol = bm.stock_symbol
     LEFT JOIN raw_symbol_name  sn ON sn.symbol = bm.stock_symbol
     WHERE {block_filter}
     GROUP BY bm.block_code, bi.block_name, bi.block_type, bd.date
-    HAVING COUNT(bd.symbol) <= {max_member_count}
 ),
 block_returns AS (
     SELECT

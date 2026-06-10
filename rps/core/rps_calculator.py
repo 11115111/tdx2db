@@ -89,9 +89,8 @@ _SQL_STOCK_RPS_HISTORY = _STOCK_RPS_CTE.format(
 _BLOCK_RPS_CTE = """
 WITH eligible_blocks AS (
     SELECT block_code
-    FROM raw_tdx_blocks_member
-    GROUP BY block_code
-    HAVING COUNT(*) <= {max_member_count}
+    FROM block_member_count
+    WHERE member_count <= {max_member_count}
 ),
 block_members AS (
     SELECT

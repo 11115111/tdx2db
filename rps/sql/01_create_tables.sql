@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS rps_block_daily (
     PRIMARY KEY (trade_date, block_code)
 );
 
+-- 板块成员数缓存，随 raw_tdx_blocks_member 更新时刷新，供 RPS 查询过滤大板块
+CREATE TABLE IF NOT EXISTS block_member_count (
+    block_code   VARCHAR PRIMARY KEY,
+    member_count INTEGER NOT NULL,
+    updated_at   TIMESTAMP DEFAULT current_timestamp
+);
+
 CREATE TABLE IF NOT EXISTS sanxianhong_daily (
     trade_date DATE NOT NULL,
     symbol VARCHAR NOT NULL,

@@ -29,7 +29,7 @@ from rps.core.rps_calculator import (
     calc_block_rps,
     calc_block_rps_history,
 )
-from rps.core.sanxianhong import calc_sanxianhong
+from rps.core.sanxianhong import calc_sanxianhong, calc_sanxianhong_history
 
 _DEFAULT_CFG = Path(__file__).parent.parent / "config" / "thresholds.yaml"
 
@@ -105,17 +105,9 @@ def main(
         click.echo(f"  {n} rows into rps_block_daily")
 
         if not skip_sanxianhong:
-            dates = [
-                str(r[0]) for r in con.execute(f"""
-                    SELECT DISTINCT trade_date FROM rps_stock_daily
-                    WHERE trade_date BETWEEN '{start_date}' AND '{end_date}'
-                    ORDER BY trade_date
-                """).fetchall()
-            ]
-            click.echo(f"[三线红] computing for {len(dates)} dates")
-            for d in dates:
-                calc_sanxianhong(con, d, szh_cfg)
-            click.echo("  done")
+            click.echo(f"[三线红] history {start_date} → {end_date} (single pass)")
+            n = calc_sanxianhong_history(con, start_date, end_date, szh_cfg)
+            click.echo(f"  {n} rows")
     else:
         if not target_date:
             row = con.execute("SELECT MAX(date) FROM raw_kline_daily").fetchone()

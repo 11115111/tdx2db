@@ -139,11 +139,17 @@ def calc_sanxianhong(
 ) -> int:
     """Incremental update for a single date.
 
-    Reads yesterday's sanxianhong_daily for streak state instead of
-    re-scanning 60 days of rps_stock_daily.
+    If sanxianhong_daily is empty, automatically backfills all history
+    up to and including target_date via a single SQL pass.
     """
     if versions is None:
         versions = ["strict"]
+
+    empty = con.execute("SELECT COUNT(*) FROM sanxianhong_daily").fetchone()[0] == 0
+    if empty:
+        row = con.execute("SELECT MIN(trade_date) FROM rps_stock_daily").fetchone()
+        start = str(row[0]) if row and row[0] else target_date
+        return calc_sanxianhong_history(con, start, target_date, cfg, versions)
 
     prev_date = _get_prev_trade_date(con, target_date)
     # The row that "expires" out of the 60-day window today

@@ -2,7 +2,7 @@
 name = "rps"
 version = "0.1.0"
 requires-python = ">=3.10,<3.15"
-dependencies = ["duckdb>=0.10", "pandas>=2.0", "pyyaml>=6.0", "click>=8.0"]
+dependencies = ["duckdb>=0.10", "pandas>=2.0", "pyyaml>=6.0", "click>=8.0", "streamlit>=1.30"]
 
 [build-system]
 requires = ["setuptools>=42"]

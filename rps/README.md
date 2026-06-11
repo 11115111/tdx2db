@@ -67,6 +67,21 @@ python -m rps.cli.run_daily --db /path/to/your.duckdb --refresh-blocks
 | `rps_block_daily` | 板块每日 RPS（5/10/15/20 周期） |
 | `sanxianhong_daily` | 三线红榜单，含连续在榜天数 |
 
+## 可视化
+
+启动三线红榜单 Streamlit 界面（从仓库根目录执行）：
+
+```bash
+streamlit run rps/ui/streamlit_app.py -- --db /path/to/your.duckdb
+```
+
+功能：
+- 日期选择器（最近 120 个交易日）
+- 板块筛选（含当日在榜股票所属板块）
+- 可选排序列：连续天数、60日在榜、上榜次数、RPS50/120/250 等
+- 汇总指标：在榜股票数、平均连续天数、平均RPS50
+- 一键下载 CSV
+
 ## 参数配置
 
 所有阈值在 `config/thresholds.yaml` 中调整，无需改代码：

@@ -9,18 +9,16 @@
 
 ## 安装
 
+在 `rps/` 目录下安装：
+
 ```bash
 cd rps
 pip install -e .
 ```
 
-或者不安装直接用（从仓库根目录运行）：
-
-```bash
-pip install duckdb pandas pyyaml click
-```
-
 ## 使用
+
+**所有命令从仓库根目录执行**（即 `tdx2db/` 目录下）：
 
 ### 第一次初始化
 

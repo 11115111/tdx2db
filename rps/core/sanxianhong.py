@@ -16,6 +16,24 @@ import duckdb
 
 def _build_history_sql(version: str, cfg: dict, start_date: str, end_date: str) -> str:
     c = cfg[version]
+
+    if version == "strict":
+        # All three RPS periods must meet their thresholds; uses h_div_hhv150
+        qual_where = (
+            f"r.rps50  >= {c['rps50_min']}\n"
+            f"      AND r.rps120 >= {c['rps120_min']}\n"
+            f"      AND r.rps250 >= {c['rps250_min']}\n"
+            f"      AND r.h_div_hhv150 >= {c['hhv_ratio_min']}"
+        )
+        hhv_col = "r.h_div_hhv150"
+    else:
+        # loose: any ONE of the three RPS periods >= rps_any_min; uses h_div_hhv250
+        qual_where = (
+            f"(r.rps50 >= {c['rps_any_min']} OR r.rps120 >= {c['rps_any_min']} OR r.rps250 >= {c['rps_any_min']})\n"
+            f"      AND r.h_div_hhv250 >= {c['hhv_ratio_min']}"
+        )
+        hhv_col = "r.h_div_hhv250"
+
     return f"""
 WITH trading_days AS (
     -- DISTINCT must be applied BEFORE ROW_NUMBER, otherwise the window
@@ -28,15 +46,12 @@ WITH trading_days AS (
 qualified AS (
     SELECT
         r.trade_date, r.symbol, r.name,
-        r.rps50, r.rps120, r.rps250, r.h_div_hhv150,
+        r.rps50, r.rps120, r.rps250, {hhv_col} AS h_div_hhv150,
         r.close_bfq, r.floatmv, r.change_pct, r.turnover,
         t.td_idx
     FROM rps_stock_daily r
     JOIN trading_days t ON t.trade_date = r.trade_date
-    WHERE r.rps50  >= {c['rps50_min']}
-      AND r.rps120 >= {c['rps120_min']}
-      AND r.rps250 >= {c['rps250_min']}
-      AND r.h_div_hhv150 >= {c['hhv_ratio_min']}
+    WHERE {qual_where}
 ),
 -- Gap-and-islands: consecutive td_idx rows within each symbol form one run.
 -- td_idx - ROW_NUMBER() is constant within a consecutive run.

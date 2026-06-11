@@ -169,7 +169,8 @@ def main() -> None:
 
     with st.sidebar:
         selected_date = st.selectbox("日期", dates, index=0)
-        version = st.selectbox("版本", ["strict", "loose"], index=0)
+        version = st.selectbox("版本", ["strict", "loose"], index=0,
+                               help="strict: rps50/120/250 全部达标 + h_div_hhv150\nloose: 任一RPS ≥ 阈值 + h_div_hhv250")
         blocks = load_blocks(con_id, db_path, selected_date, version)
         selected_block = st.selectbox("板块筛选", blocks, index=0)
 

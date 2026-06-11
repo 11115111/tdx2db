@@ -107,8 +107,9 @@ def main(
         click.echo(f"  {n} rows into rps_block_daily")
 
         if not skip_sanxianhong:
-            click.echo(f"[三线红] history {start_date} → {end_date} (single pass)")
-            n = calc_sanxianhong_history(con, start_date, end_date, szh_cfg)
+            versions = list(szh_cfg.keys())
+            click.echo(f"[三线红] history {start_date} → {end_date} versions={versions}")
+            n = calc_sanxianhong_history(con, start_date, end_date, szh_cfg, versions=versions)
             click.echo(f"  {n} rows")
     else:
         if not target_date:
@@ -131,8 +132,9 @@ def main(
         click.echo(f"  {n} rows")
 
         if not skip_sanxianhong:
-            click.echo(f"[三线红] {target_date}")
-            n = calc_sanxianhong(con, target_date, szh_cfg)
+            versions = list(szh_cfg.keys())
+            click.echo(f"[三线红] {target_date} versions={versions}")
+            n = calc_sanxianhong(con, target_date, szh_cfg, versions=versions)
             click.echo(f"  {n} rows")
 
     con.close()

@@ -14,7 +14,7 @@ from rps.core.rps_calculator import (
     calc_stock_rps,
     calc_block_rps,
 )
-from rps.core.sanxianhong import calc_sanxianhong
+from rps.core.sanxianhong import calc_sanxianhong, calc_sanxianhong_history
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def _seed_data(c: duckdb.DuckDBPyConnection) -> None:
             k.symbol, k.date,
             k.open, k.high, k.low, k.close,
             b.preclose, b.turnover, b.floatmv, b.totalmv, b.change_pct,
-            b.amplitude, b.amount, 1.0 AS hfq_factor, 1.0 AS qfq_factor,
+            b.amplitude, 1.0 AS hfq_factor, 1.0 AS qfq_factor,
             k.amount
         FROM raw_kline_daily k
         JOIN raw_basic_daily b ON b.symbol = k.symbol AND b.date = k.date
@@ -240,3 +240,78 @@ def test_consecutive_days_increments(con):
             assert days[-1] >= days[-2], (
                 f"{sym}: consecutive_days should not decrease: {days}"
             )
+
+
+def _seed_sanxianhong_pattern(c) -> tuple[list[str], dict]:
+    """Seed rps_stock_daily for one symbol with a controlled qualify pattern.
+
+    Qualifies on day indices: run1=0..4, run2=10..12, run3=70..75.
+    Non-qualifying days are present too (so td_idx is dense, 1..80).
+    """
+    import datetime
+
+    days = [(datetime.date(2024, 1, 1) + datetime.timedelta(days=i)).isoformat()
+            for i in range(80)]
+    qual_idx = set(range(0, 5)) | set(range(10, 13)) | set(range(70, 76))
+    rows = []
+    for i, d in enumerate(days):
+        q = i in qual_idx
+        rps = 99 if q else 10
+        hh = 0.99 if q else 0.10
+        rows.append((d, "A", "测试A", rps, rps, rps, hh, 10.0, 1e9, 1.0, 5.0))
+    c.executemany("""
+        INSERT INTO rps_stock_daily
+          (trade_date, symbol, name, rps50, rps120, rps250, h_div_hhv150,
+           close_bfq, floatmv, change_pct, turnover)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, rows)
+    cfg = {"strict": {"rps50_min": 90, "rps120_min": 90, "rps250_min": 90,
+                      "hhv_ratio_min": 0.85}}
+    return days, cfg
+
+
+def _szh_rows(c):
+    return c.execute("""
+        SELECT trade_date::VARCHAR t, consecutive_days c, total_days_60d td,
+               enter_pool_count_60d e, join_date::VARCHAR j
+        FROM sanxianhong_daily ORDER BY trade_date
+    """).df()
+
+
+def test_sanxianhong_streaks_and_windows():
+    """Exact streak / 60-day window / entry-count values across gaps and re-entry."""
+    c = duckdb.connect(":memory:")
+    init_tables(c)
+    days, cfg = _seed_sanxianhong_pattern(c)
+    calc_sanxianhong_history(c, days[0], days[-1], cfg)
+    res = _szh_rows(c)
+
+    def row(i):
+        return res[res["t"] == days[i]].iloc[0]
+
+    # run1 last day: 5 consecutive, window has only run1 (5 days, 1 entry)
+    r = row(4)
+    assert (r.c, r.td, r.e, r.j) == (5, 5, 1, days[0])
+    # run2 last day: 3 consecutive; window spans run1+run2 -> 8 days, 2 entries
+    r = row(12)
+    assert (r.c, r.td, r.e, r.j) == (3, 8, 2, days[10])
+    # run3 last day: 6 consecutive; old runs have expired from the 60d window
+    r = row(75)
+    assert (r.c, r.td, r.e, r.j) == (6, 6, 1, days[70])
+
+
+def test_sanxianhong_daily_matches_history():
+    """Per-date daily compute must equal the full bulk history compute."""
+    c = duckdb.connect(":memory:")
+    init_tables(c)
+    days, cfg = _seed_sanxianhong_pattern(c)
+
+    calc_sanxianhong_history(c, days[0], days[-1], cfg)
+    hist = _szh_rows(c)
+
+    c.execute("DELETE FROM sanxianhong_daily")
+    for d in days:
+        calc_sanxianhong(c, d, cfg)
+    daily = _szh_rows(c)
+
+    assert hist.equals(daily)

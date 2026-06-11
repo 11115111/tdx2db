@@ -126,26 +126,34 @@ def load_sanxianhong(
     if block_filter and block_filter != "全部" and not df.empty:
         df = df.drop_duplicates(subset=["代码"])
 
-    # Attach secondary industry classification (行业二级) per symbol
-    if not df.empty:
-        try:
-            blocks_df = con.execute("""
-                SELECT bm.stock_symbol AS symbol,
-                       STRING_AGG(bi.block_name, ' / ' ORDER BY bi.block_name) AS 所属行业
-                FROM raw_tdx_blocks_member bm
-                JOIN raw_tdx_blocks_info   bi ON bi.block_code = bm.block_code
-                WHERE bi.block_type = 'tdx_research' AND bi.block_level = 2
-                GROUP BY bm.stock_symbol
-            """).df()
-            df = df.merge(blocks_df, left_on="代码", right_on="symbol", how="left").drop(columns=["symbol"])
-            cols = df.columns.tolist()
-            cols.remove("所属行业")
-            cols.insert(cols.index("名称") + 1, "所属行业")
-            df = df[cols]
-        except Exception:
-            df["所属行业"] = ""
-
     return df
+
+
+@st.cache_data(ttl=300)
+def load_industry(_con_id: int, db_path: str) -> pd.DataFrame:
+    """Return symbol → 所属行业 mapping (行业二级)."""
+    con = get_con(db_path)
+    try:
+        return con.execute("""
+            SELECT bm.stock_symbol AS symbol,
+                   STRING_AGG(bi.block_name, ' / ' ORDER BY bi.block_name) AS 所属行业
+            FROM raw_tdx_blocks_member bm
+            JOIN raw_tdx_blocks_info   bi ON bi.block_code = bm.block_code
+            WHERE bi.block_type = 'tdx_research' AND bi.block_level = 2
+            GROUP BY bm.stock_symbol
+        """).df()
+    except Exception:
+        return pd.DataFrame(columns=["symbol", "所属行业"])
+
+
+def _attach_industry(df: pd.DataFrame, industry_df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    df = df.merge(industry_df, left_on="代码", right_on="symbol", how="left").drop(columns=["symbol"])
+    cols = df.columns.tolist()
+    cols.remove("所属行业")
+    cols.insert(cols.index("名称") + 1, "所属行业")
+    return df[cols]
 
 
 @st.cache_data(ttl=300)
@@ -297,6 +305,10 @@ def main() -> None:
     df = load_sanxianhong(con_id, db_path, selected_date, version, selected_block)
     df_new = load_new_entries(con_id, db_path, selected_date, version)
     df_exit = load_exits(con_id, db_path, selected_date, version)
+    industry_df = load_industry(con_id, db_path)
+    df = _attach_industry(df, industry_df)
+    df_new = _attach_industry(df_new, industry_df)
+    df_exit = _attach_industry(df_exit, industry_df)
 
     if df.empty:
         st.info(f"{selected_date} 暂无三线红数据")

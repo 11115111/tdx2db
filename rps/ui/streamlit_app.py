@@ -102,7 +102,7 @@ def load_sanxianhong(
             s.rps250                                    AS RPS250,
             ROUND(s.h_div_hhv150, 3)                    AS 近高比,
             s.consecutive_days                          AS 连续天数,
-            s.total_days_60d                            AS 60日在榜,
+            s.total_days_60d                            AS "60日在榜",
             s.enter_pool_count_60d                      AS 上榜次数,
             s.join_date                                 AS 本轮入榜,
             ROUND(s.close_bfq, 2)                       AS 现价,

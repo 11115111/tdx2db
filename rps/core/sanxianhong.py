@@ -188,19 +188,35 @@ def calc_sanxianhong(
                                              "enter_pool_count_60d", "join_date"])
             prev_df.index.name = "symbol"
 
-        # Stocks that expire from the 60-day window (were in pool on expire_date)
+        # Stocks that expire from the 60-day window — query rps_stock_daily
+        # directly so expiry works even when expire_date predates sanxianhong history.
         if expire_date:
-            expire_syms = set(con.execute(f"""
-                SELECT symbol FROM sanxianhong_daily
-                WHERE trade_date = '{expire_date}' AND formula_version = '{version}'
-            """).df()["symbol"].tolist())
-            # Stocks whose run started exactly on expire_date (their entry expires too)
-            expire_run_start_syms = set(con.execute(f"""
-                SELECT symbol FROM sanxianhong_daily
-                WHERE trade_date = '{expire_date}'
-                  AND formula_version = '{version}'
-                  AND join_date = trade_date
-            """).df()["symbol"].tolist())
+            expire_qual_df = con.execute(f"""
+                SELECT r.symbol,
+                       -- is this a run-start? (not qualifying the day before)
+                       CASE WHEN prev.symbol IS NULL THEN 1 ELSE 0 END AS is_run_start
+                FROM rps_stock_daily r
+                LEFT JOIN (
+                    SELECT symbol FROM rps_stock_daily
+                    WHERE trade_date = (
+                        SELECT MAX(trade_date) FROM rps_stock_daily
+                        WHERE trade_date < '{expire_date}'
+                    )
+                      AND rps50  >= {c['rps50_min']}
+                      AND rps120 >= {c['rps120_min']}
+                      AND rps250 >= {c['rps250_min']}
+                      AND h_div_hhv150 >= {c['hhv_ratio_min']}
+                ) prev ON prev.symbol = r.symbol
+                WHERE r.trade_date = '{expire_date}'
+                  AND r.rps50  >= {c['rps50_min']}
+                  AND r.rps120 >= {c['rps120_min']}
+                  AND r.rps250 >= {c['rps250_min']}
+                  AND r.h_div_hhv150 >= {c['hhv_ratio_min']}
+            """).df()
+            expire_syms = set(expire_qual_df["symbol"].tolist())
+            expire_run_start_syms = set(
+                expire_qual_df.loc[expire_qual_df["is_run_start"] == 1, "symbol"].tolist()
+            )
         else:
             expire_syms = set()
             expire_run_start_syms = set()
@@ -226,7 +242,7 @@ def calc_sanxianhong(
                 enter_pool_count_60d = prev_enter + 1 - (1 if sym in expire_run_start_syms else 0)
 
             # Clamp to valid range
-            total_days_60d       = max(total_days_60d, 1)
+            total_days_60d       = max(min(total_days_60d, 60), 1)
             enter_pool_count_60d = max(enter_pool_count_60d, 1)
 
             rows.append({

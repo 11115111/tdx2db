@@ -54,7 +54,10 @@ with_streak AS (
            )                                                                   AS join_date,
            -- mark first day of each run for enter_pool_count window
            CASE WHEN ROW_NUMBER() OVER (PARTITION BY symbol, run_id ORDER BY td_idx) = 1
-                THEN 1 ELSE 0 END                                             AS is_run_start
+                THEN 1 ELSE 0 END                                             AS is_run_start,
+           -- previous qualifying date overall; on a run-start row this is the
+           -- last in-pool day of the PREVIOUS run (the run we exited from).
+           LAG(trade_date) OVER (PARTITION BY symbol ORDER BY td_idx)         AS prev_qual_date
     FROM grouped
 ),
 -- Sliding 60-trading-day window using td_idx RANGE.
@@ -69,7 +72,12 @@ with_window AS (
         CAST(SUM(s.is_run_start) OVER (
             PARTITION BY s.symbol ORDER BY s.td_idx
             RANGE BETWEEN 59 PRECEDING AND CURRENT ROW
-        ) AS INTEGER)                                                          AS enter_pool_count_60d
+        ) AS INTEGER)                                                          AS enter_pool_count_60d,
+        -- broadcast the previous run's last day across the whole current run
+        -- (each run has exactly one run-start row carrying prev_qual_date)
+        MAX(CASE WHEN s.is_run_start = 1 THEN s.prev_qual_date END) OVER (
+            PARTITION BY s.symbol, s.run_id
+        )                                                                      AS last_exit_date
     FROM with_streak s
 )
 INSERT OR REPLACE INTO sanxianhong_daily
@@ -81,7 +89,7 @@ SELECT
     CAST(consecutive_days    AS INTEGER),
     total_days_60d,
     enter_pool_count_60d,
-    NULL                AS last_exit_date,
+    last_exit_date,
     close_bfq, floatmv, change_pct, turnover
 FROM with_window
 WHERE trade_date BETWEEN '{start_date}' AND '{end_date}'

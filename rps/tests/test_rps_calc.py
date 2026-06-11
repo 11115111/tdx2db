@@ -273,7 +273,8 @@ def _seed_sanxianhong_pattern(c) -> tuple[list[str], dict]:
 def _szh_rows(c):
     return c.execute("""
         SELECT trade_date::VARCHAR t, consecutive_days c, total_days_60d td,
-               enter_pool_count_60d e, join_date::VARCHAR j
+               enter_pool_count_60d e, join_date::VARCHAR j,
+               last_exit_date::VARCHAR le
         FROM sanxianhong_daily ORDER BY trade_date
     """).df()
 
@@ -289,15 +290,22 @@ def test_sanxianhong_streaks_and_windows():
     def row(i):
         return res[res["t"] == days[i]].iloc[0]
 
+    def lexit(i):
+        v = res[res["t"] == days[i]].iloc[0]["le"]
+        return None if pd.isna(v) else v
+
     # run1 last day: 5 consecutive, window has only run1 (5 days, 1 entry)
     r = row(4)
     assert (r.c, r.td, r.e, r.j) == (5, 5, 1, days[0])
+    assert lexit(4) is None  # first run ever -> no prior exit
     # run2 last day: 3 consecutive; window spans run1+run2 -> 8 days, 2 entries
     r = row(12)
     assert (r.c, r.td, r.e, r.j) == (3, 8, 2, days[10])
+    assert lexit(12) == days[4]   # previous run ended on day 4
     # run3 last day: 6 consecutive; old runs have expired from the 60d window
     r = row(75)
     assert (r.c, r.td, r.e, r.j) == (6, 6, 1, days[70])
+    assert lexit(75) == days[12]  # previous run ended on day 12
 
 
 def test_sanxianhong_daily_matches_history():

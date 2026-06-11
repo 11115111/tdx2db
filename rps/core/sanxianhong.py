@@ -52,6 +52,9 @@ qualified AS (
     FROM rps_stock_daily r
     JOIN trading_days t ON t.trade_date = r.trade_date
     WHERE {qual_where}
+      AND r.name IS NOT NULL
+      AND r.name NOT LIKE '%ST%'
+      AND r.name NOT LIKE '%退%'
 ),
 -- Gap-and-islands: consecutive td_idx rows within each symbol form one run.
 -- td_idx - ROW_NUMBER() is constant within a consecutive run.

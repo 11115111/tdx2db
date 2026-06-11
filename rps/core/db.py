@@ -31,8 +31,10 @@ def refresh_block_member_count(con: duckdb.DuckDBPyConnection) -> int:
 
 
 def refresh_stock_pool(con: duckdb.DuckDBPyConnection) -> int:
-    """Rebuild eligible stock pool: excludes ST, delisted, BSE (8x), B-shares (9x), 三板 (4x).
+    """Rebuild eligible stock pool: excludes B-shares (9x) and 三板 (4x).
 
+    ST, delisted, and BSE (8x) stocks are kept so RPS ranks them fairly.
+    Sanxianhong applies its own ST/delisted filter at query time.
     Call after raw_symbol_name or raw_symbol_class is updated. Returns pool size.
     """
     con.execute("DELETE FROM stock_pool")
@@ -40,11 +42,8 @@ def refresh_stock_pool(con: duckdb.DuckDBPyConnection) -> int:
         INSERT INTO stock_pool (symbol, name)
         SELECT s.symbol, n.name
         FROM raw_symbol_class s
-        JOIN raw_symbol_name n ON n.symbol = s.symbol
+        LEFT JOIN raw_symbol_name n ON n.symbol = s.symbol
         WHERE s.class = 'stock'
-          AND n.name NOT LIKE '%ST%'
-          AND n.name NOT LIKE '%退%'
-          AND s.symbol NOT LIKE '8%'
           AND s.symbol NOT LIKE '4%'
           AND s.symbol NOT LIKE '9%'
     """)

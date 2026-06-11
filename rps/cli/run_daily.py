@@ -39,16 +39,6 @@ def _load_cfg(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def _ensure_static_caches(con) -> None:
-    """Auto-populate static caches on first run if empty."""
-    if con.execute("SELECT COUNT(*) FROM block_member_count").fetchone()[0] == 0:
-        click.echo("[cache] block_member_count empty, refreshing...")
-        click.echo(f"  {refresh_block_member_count(con)} blocks cached")
-
-    if con.execute("SELECT COUNT(*) FROM stock_pool").fetchone()[0] == 0:
-        click.echo("[cache] stock_pool empty, refreshing...")
-        click.echo(f"  {refresh_stock_pool(con)} symbols cached")
-
 
 @click.command()
 @click.option("--db", required=True, help="Path to DuckDB file")
@@ -82,8 +72,6 @@ def main(
         con.close()
         return
 
-    _ensure_static_caches(con)
-
     if init_history:
         if not end_date:
             row = con.execute("SELECT MAX(date) FROM raw_kline_daily").fetchone()
@@ -93,6 +81,11 @@ def main(
             start_date = con.execute(
                 "SELECT (CAST($1 AS DATE) - INTERVAL '2 years')::VARCHAR", [end_date]
             ).fetchone()[0]
+
+        click.echo(f"[stock_pool]       refreshing...")
+        click.echo(f"  {refresh_stock_pool(con)} symbols")
+        click.echo(f"[block_member_count] refreshing...")
+        click.echo(f"  {refresh_block_member_count(con)} blocks")
 
         click.echo(f"[block_daily_pct] history {start_date} → {end_date}")
         n = calc_block_daily_pct_history(con, start_date, end_date)
@@ -118,6 +111,11 @@ def main(
         if not target_date:
             click.echo("No target date and no data in DB", err=True)
             raise SystemExit(1)
+
+        click.echo(f"[stock_pool]       refreshing...")
+        click.echo(f"  {refresh_stock_pool(con)} symbols")
+        click.echo(f"[block_member_count] refreshing...")
+        click.echo(f"  {refresh_block_member_count(con)} blocks")
 
         click.echo(f"[block_daily_pct] {target_date}")
         n = calc_block_daily_pct(con, target_date)

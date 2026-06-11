@@ -35,8 +35,9 @@ def refresh_stock_pool(con: duckdb.DuckDBPyConnection) -> int:
 
     Call after raw_symbol_name or raw_symbol_class is updated. Returns pool size.
     """
+    con.execute("DELETE FROM stock_pool")
     con.execute("""
-        INSERT OR REPLACE INTO stock_pool (symbol, name)
+        INSERT INTO stock_pool (symbol, name)
         SELECT s.symbol, n.name
         FROM raw_symbol_class s
         JOIN raw_symbol_name n ON n.symbol = s.symbol

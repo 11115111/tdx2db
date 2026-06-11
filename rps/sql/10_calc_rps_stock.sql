@@ -51,8 +51,8 @@ SELECT
     ranked.pct_5d, ranked.pct_10d, ranked.pct_20d, ranked.pct_50d, ranked.pct_120d, ranked.pct_250d,
     ranked.close_qfq,
     ranked.hhv60_qfq, ranked.hhv150_qfq, ranked.hhv250_qfq,
-    ranked.close_qfq / NULLIF(ranked.hhv150_qfq, 0) AS h_div_hhv150,
-    ranked.close_qfq / NULLIF(ranked.hhv250_qfq, 0) AS h_div_hhv250,
+    ranked.high_qfq / NULLIF(ranked.hhv150_qfq, 0) AS h_div_hhv150,
+    ranked.high_qfq / NULLIF(ranked.hhv250_qfq, 0) AS h_div_hhv250,
     b.close            AS close_bfq,
     b.floatmv, b.totalmv, b.turnover, b.amount, b.change_pct
 FROM ranked

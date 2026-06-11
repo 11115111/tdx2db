@@ -159,6 +159,7 @@ WITH returns AS (
         q.date,
         q.symbol,
         q.close                                                               AS close_qfq,
+        q.high                                                                AS high_qfq,
         (q.close / NULLIF(LAG(q.close, 5)   OVER w, 0) - 1) * 100           AS pct_5d,
         (q.close / NULLIF(LAG(q.close, 10)  OVER w, 0) - 1) * 100           AS pct_10d,
         (q.close / NULLIF(LAG(q.close, 20)  OVER w, 0) - 1) * 100           AS pct_20d,
@@ -218,8 +219,8 @@ SELECT
     r.pct_5d, r.pct_10d, r.pct_20d, r.pct_50d, r.pct_120d, r.pct_250d,
     r.close_qfq,
     r.hhv60_qfq, r.hhv150_qfq, r.hhv250_qfq,
-    r.close_qfq / NULLIF(r.hhv150_qfq, 0) AS h_div_hhv150,
-    r.close_qfq / NULLIF(r.hhv250_qfq, 0) AS h_div_hhv250,
+    r.high_qfq / NULLIF(r.hhv150_qfq, 0) AS h_div_hhv150,
+    r.high_qfq / NULLIF(r.hhv250_qfq, 0) AS h_div_hhv250,
     b.close   AS close_bfq,
     b.floatmv, b.totalmv, b.turnover, b.amount, b.change_pct
 FROM ranked r

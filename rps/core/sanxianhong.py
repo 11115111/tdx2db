@@ -1,13 +1,12 @@
 """三线红榜单计算.
 
 History bulk:   calc_sanxianhong_history()  — single SQL pass, gap-and-islands
-Incremental:    calc_sanxianhong()          — derives from yesterday's sanxianhong_daily
+Daily:          calc_sanxianhong()          — same windowed SQL for one date
 """
 from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 import duckdb
 
 
@@ -111,28 +110,13 @@ def calc_sanxianhong_history(
 
 
 # ---------------------------------------------------------------------------
-# Incremental daily — derives from yesterday's sanxianhong_daily
+# Daily single-date — reuses the windowed history SQL for one date.
+#
+# The CTEs in _build_history_sql compute streaks and the 60-day window over
+# the *entire* rps_stock_daily; only the final INSERT filters by date. So a
+# single date is computed exactly the same way as during a full backfill —
+# correct across gaps and re-entries, with no fragile yesterday-delta logic.
 # ---------------------------------------------------------------------------
-
-def _get_prev_trade_date(con: duckdb.DuckDBPyConnection, target_date: str) -> str | None:
-    row = con.execute("""
-        SELECT MAX(trade_date) FROM rps_stock_daily
-        WHERE trade_date < $1
-    """, [target_date]).fetchone()
-    return str(row[0]) if row and row[0] else None
-
-
-def _get_nth_prev_trade_date(con: duckdb.DuckDBPyConnection, target_date: str, n: int) -> str | None:
-    """Return the trade date that is exactly n trading days before target_date."""
-    row = con.execute("""
-        SELECT trade_date FROM (
-            SELECT trade_date,
-                   ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
-            FROM (SELECT DISTINCT trade_date FROM rps_stock_daily WHERE trade_date < $1)
-        ) WHERE rn = $2
-    """, [target_date, n]).fetchone()
-    return str(row[0]) if row and row[0] else None
-
 
 def calc_sanxianhong(
     con: duckdb.DuckDBPyConnection,
@@ -140,147 +124,10 @@ def calc_sanxianhong(
     cfg: dict[str, Any],
     versions: list[str] | None = None,
 ) -> int:
-    """Incremental update for a single date.
+    """Compute 三线红 for a single date via the windowed SQL.
 
-    If sanxianhong_daily is empty, automatically backfills all history
-    up to and including target_date via a single SQL pass.
+    Windows are evaluated over all of rps_stock_daily, so consecutive_days,
+    join_date, total_days_60d and enter_pool_count_60d are always correct
+    regardless of prior gaps. Idempotent (INSERT OR REPLACE on the date).
     """
-    if versions is None:
-        versions = ["strict"]
-
-    empty = con.execute("SELECT COUNT(*) FROM sanxianhong_daily").fetchone()[0] == 0
-    if empty:
-        row = con.execute("SELECT MIN(trade_date) FROM rps_stock_daily").fetchone()
-        start = str(row[0]) if row and row[0] else target_date
-        return calc_sanxianhong_history(con, start, target_date, cfg, versions)
-
-    prev_date = _get_prev_trade_date(con, target_date)
-    # The row that "expires" out of the 60-day window today
-    expire_date = _get_nth_prev_trade_date(con, target_date, 60)
-
-    total = 0
-    for version in versions:
-        c = cfg[version]
-
-        # Today's qualifying stocks
-        today_df = con.execute(f"""
-            SELECT trade_date, symbol, name,
-                   rps50, rps120, rps250, h_div_hhv150,
-                   close_bfq, floatmv, change_pct, turnover
-            FROM rps_stock_daily
-            WHERE trade_date = '{target_date}'
-              AND rps50  >= {c['rps50_min']}
-              AND rps120 >= {c['rps120_min']}
-              AND rps250 >= {c['rps250_min']}
-              AND h_div_hhv150 >= {c['hhv_ratio_min']}
-        """).df()
-
-        if today_df.empty:
-            continue
-
-        # Yesterday's sanxianhong rows for streak state
-        if prev_date:
-            prev_df = con.execute(f"""
-                SELECT symbol, consecutive_days, total_days_60d,
-                       enter_pool_count_60d, join_date
-                FROM sanxianhong_daily
-                WHERE trade_date = '{prev_date}' AND formula_version = '{version}'
-            """).df().set_index("symbol")
-        else:
-            prev_df = pd.DataFrame(columns=["consecutive_days", "total_days_60d",
-                                             "enter_pool_count_60d", "join_date"])
-            prev_df.index.name = "symbol"
-
-        # Stocks that expire from the 60-day window — query rps_stock_daily
-        # directly so expiry works even when expire_date predates sanxianhong history.
-        if expire_date:
-            expire_qual_df = con.execute(f"""
-                SELECT r.symbol,
-                       -- is this a run-start? (not qualifying the day before)
-                       CASE WHEN prev.symbol IS NULL THEN 1 ELSE 0 END AS is_run_start
-                FROM rps_stock_daily r
-                LEFT JOIN (
-                    SELECT symbol FROM rps_stock_daily
-                    WHERE trade_date = (
-                        SELECT MAX(trade_date) FROM rps_stock_daily
-                        WHERE trade_date < '{expire_date}'
-                    )
-                      AND rps50  >= {c['rps50_min']}
-                      AND rps120 >= {c['rps120_min']}
-                      AND rps250 >= {c['rps250_min']}
-                      AND h_div_hhv150 >= {c['hhv_ratio_min']}
-                ) prev ON prev.symbol = r.symbol
-                WHERE r.trade_date = '{expire_date}'
-                  AND r.rps50  >= {c['rps50_min']}
-                  AND r.rps120 >= {c['rps120_min']}
-                  AND r.rps250 >= {c['rps250_min']}
-                  AND r.h_div_hhv150 >= {c['hhv_ratio_min']}
-            """).df()
-            expire_syms = set(expire_qual_df["symbol"].tolist())
-            expire_run_start_syms = set(
-                expire_qual_df.loc[expire_qual_df["is_run_start"] == 1, "symbol"].tolist()
-            )
-        else:
-            expire_syms = set()
-            expire_run_start_syms = set()
-
-        rows = []
-        for _, row in today_df.iterrows():
-            sym = row["symbol"]
-            in_prev = sym in prev_df.index
-
-            if in_prev:
-                p = prev_df.loc[sym]
-                consecutive_days    = int(p["consecutive_days"]) + 1
-                join_date           = p["join_date"]
-                total_days_60d      = int(p["total_days_60d"]) + 1 - (1 if sym in expire_syms else 0)
-                enter_pool_count_60d = int(p["enter_pool_count_60d"]) - (1 if sym in expire_run_start_syms else 0)
-            else:
-                # New entry today
-                consecutive_days    = 1
-                join_date           = target_date
-                prev_total          = int(prev_df.loc[sym, "total_days_60d"]) if sym in prev_df.index else 0
-                total_days_60d      = prev_total + 1 - (1 if sym in expire_syms else 0)
-                prev_enter          = int(prev_df.loc[sym, "enter_pool_count_60d"]) if sym in prev_df.index else 0
-                enter_pool_count_60d = prev_enter + 1 - (1 if sym in expire_run_start_syms else 0)
-
-            # Clamp to valid range
-            total_days_60d       = max(min(total_days_60d, 60), 1)
-            enter_pool_count_60d = max(enter_pool_count_60d, 1)
-
-            rows.append({
-                "trade_date":          target_date,
-                "symbol":              sym,
-                "name":                row["name"],
-                "rps50":               int(row["rps50"]),
-                "rps120":              int(row["rps120"]),
-                "rps250":              int(row["rps250"]),
-                "h_div_hhv150":        float(row["h_div_hhv150"]),
-                "formula_version":     version,
-                "join_date":           join_date,
-                "consecutive_days":    consecutive_days,
-                "total_days_60d":      total_days_60d,
-                "enter_pool_count_60d": enter_pool_count_60d,
-                "last_exit_date":      None,
-                "close_bfq":           row["close_bfq"],
-                "floatmv":             row["floatmv"],
-                "change_pct":          row["change_pct"],
-                "turnover":            row["turnover"],
-            })
-
-        if rows:
-            batch = pd.DataFrame(rows)
-            con.register("_szh_batch", batch)
-            con.execute("""
-                INSERT OR REPLACE INTO sanxianhong_daily
-                SELECT trade_date, symbol, name,
-                       rps50, rps120, rps250, h_div_hhv150,
-                       formula_version, join_date, consecutive_days,
-                       total_days_60d, enter_pool_count_60d, last_exit_date,
-                       close_bfq, floatmv, change_pct, turnover
-                FROM _szh_batch
-            """)
-            con.unregister("_szh_batch")
-            total += len(rows)
-
-    return total
+    return calc_sanxianhong_history(con, target_date, target_date, cfg, versions)

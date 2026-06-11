@@ -178,12 +178,33 @@ WITH returns AS (
 ranked AS (
     SELECT
         r.*,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_5d   NULLS FIRST) * 99 AS INTEGER) AS rps5,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_10d  NULLS FIRST) * 99 AS INTEGER) AS rps10,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_20d  NULLS FIRST) * 99 AS INTEGER) AS rps20,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_50d  NULLS FIRST) * 99 AS INTEGER) AS rps50,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_120d NULLS FIRST) * 99 AS INTEGER) AS rps120,
-        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_250d NULLS FIRST) * 99 AS INTEGER) AS rps250
+        -- rps5: all rows here have pct_5d non-NULL (filtered above), plain rank
+        CAST(PERCENT_RANK() OVER (PARTITION BY r.date ORDER BY r.pct_5d) * 99
+             AS INTEGER)                                                        AS rps5,
+        -- rps10..rps250: rank only within stocks that have valid data for that
+        -- period; stocks with shorter history get NULL, not a deflated score.
+        -- PARTITION BY (pct IS NOT NULL) splits NULL/non-NULL into separate
+        -- buckets so NULL rows don't dilute the non-NULL ranking population.
+        CASE WHEN r.pct_10d  IS NOT NULL
+             THEN CAST(PERCENT_RANK() OVER (
+                      PARTITION BY r.date, (r.pct_10d  IS NOT NULL)
+                      ORDER BY r.pct_10d ) * 99 AS INTEGER) END               AS rps10,
+        CASE WHEN r.pct_20d  IS NOT NULL
+             THEN CAST(PERCENT_RANK() OVER (
+                      PARTITION BY r.date, (r.pct_20d  IS NOT NULL)
+                      ORDER BY r.pct_20d ) * 99 AS INTEGER) END               AS rps20,
+        CASE WHEN r.pct_50d  IS NOT NULL
+             THEN CAST(PERCENT_RANK() OVER (
+                      PARTITION BY r.date, (r.pct_50d  IS NOT NULL)
+                      ORDER BY r.pct_50d ) * 99 AS INTEGER) END               AS rps50,
+        CASE WHEN r.pct_120d IS NOT NULL
+             THEN CAST(PERCENT_RANK() OVER (
+                      PARTITION BY r.date, (r.pct_120d IS NOT NULL)
+                      ORDER BY r.pct_120d) * 99 AS INTEGER) END               AS rps120,
+        CASE WHEN r.pct_250d IS NOT NULL
+             THEN CAST(PERCENT_RANK() OVER (
+                      PARTITION BY r.date, (r.pct_250d IS NOT NULL)
+                      ORDER BY r.pct_250d) * 99 AS INTEGER) END               AS rps250
     FROM returns r
     WHERE r.pct_5d IS NOT NULL
       AND {date_filter}

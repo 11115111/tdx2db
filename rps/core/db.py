@@ -1,7 +1,7 @@
 import duckdb
 from pathlib import Path
 
-_SQL_CREATE = (Path(__file__).parent.parent / "sql" / "01_create_tables.sql").read_text()
+_SQL_CREATE = (Path(__file__).parent.parent / "sql" / "01_create_tables.sql").read_text(encoding="utf-8")
 
 
 def get_connection(db_path: str) -> duckdb.DuckDBPyConnection:

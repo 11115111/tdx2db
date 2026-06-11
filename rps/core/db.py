@@ -39,10 +39,10 @@ def refresh_stock_pool(con: duckdb.DuckDBPyConnection) -> int:
         INSERT OR REPLACE INTO stock_pool (symbol, name)
         SELECT s.symbol, n.name
         FROM raw_symbol_class s
-        LEFT JOIN raw_symbol_name n ON n.symbol = s.symbol
+        JOIN raw_symbol_name n ON n.symbol = s.symbol
         WHERE s.class = 'stock'
-          AND COALESCE(n.name, '') NOT LIKE '%ST%'
-          AND COALESCE(n.name, '') NOT LIKE '%退%'
+          AND n.name NOT LIKE '%ST%'
+          AND n.name NOT LIKE '%退%'
           AND s.symbol NOT LIKE '8%'
           AND s.symbol NOT LIKE '4%'
           AND s.symbol NOT LIKE '9%'

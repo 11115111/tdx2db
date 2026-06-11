@@ -126,25 +126,24 @@ def load_sanxianhong(
     if block_filter and block_filter != "全部" and not df.empty:
         df = df.drop_duplicates(subset=["代码"])
 
-    # Attach block names: aggregate all blocks per symbol into one string
+    # Attach secondary industry classification (行业二级) per symbol
     if not df.empty:
         try:
             blocks_df = con.execute("""
                 SELECT bm.stock_symbol AS symbol,
-                       STRING_AGG(bi.block_name, ' / ' ORDER BY bi.block_name) AS 所属板块
+                       STRING_AGG(bi.block_name, ' / ' ORDER BY bi.block_name) AS 所属行业
                 FROM raw_tdx_blocks_member bm
                 JOIN raw_tdx_blocks_info   bi ON bi.block_code = bm.block_code
+                WHERE bi.block_type = 'tdx_research' AND bi.block_level = 2
                 GROUP BY bm.stock_symbol
             """).df()
             df = df.merge(blocks_df, left_on="代码", right_on="symbol", how="left").drop(columns=["symbol"])
-            # Move 所属板块 to position after 名称
             cols = df.columns.tolist()
-            cols.remove("所属板块")
-            idx = cols.index("名称") + 1
-            cols.insert(idx, "所属板块")
+            cols.remove("所属行业")
+            cols.insert(cols.index("名称") + 1, "所属行业")
             df = df[cols]
         except Exception:
-            df["所属板块"] = ""
+            df["所属行业"] = ""
 
     return df
 
@@ -229,7 +228,7 @@ def main() -> None:
         column_config={
             "代码":     st.column_config.TextColumn("代码", width="small"),
             "名称":     st.column_config.TextColumn("名称", width="small"),
-            "所属板块": st.column_config.TextColumn("所属板块", width="large"),
+            "所属行业": st.column_config.TextColumn("所属行业", width="medium"),
             "RPS50":    st.column_config.NumberColumn("RPS50",  format="%d"),
             "RPS120":   st.column_config.NumberColumn("RPS120", format="%d"),
             "RPS250":   st.column_config.NumberColumn("RPS250", format="%d"),

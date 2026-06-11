@@ -85,12 +85,14 @@ def main(
     _ensure_static_caches(con)
 
     if init_history:
-        if not start_date:
-            row = con.execute("SELECT MIN(date) FROM raw_kline_daily").fetchone()
-            start_date = str(row[0]) if row and row[0] else "2010-01-01"
         if not end_date:
             row = con.execute("SELECT MAX(date) FROM raw_kline_daily").fetchone()
             end_date = str(row[0]) if row and row[0] else target_date
+        if not start_date:
+            # Default: 2 years back from end_date; override with --start if needed
+            start_date = con.execute(
+                "SELECT (CAST($1 AS DATE) - INTERVAL '2 years')::VARCHAR", [end_date]
+            ).fetchone()[0]
 
         click.echo(f"[block_daily_pct] history {start_date} → {end_date}")
         n = calc_block_daily_pct_history(con, start_date, end_date)

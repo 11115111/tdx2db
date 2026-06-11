@@ -19,9 +19,12 @@ def _build_history_sql(version: str, cfg: dict, start_date: str, end_date: str) 
     c = cfg[version]
     return f"""
 WITH trading_days AS (
-    SELECT DISTINCT trade_date,
+    -- DISTINCT must be applied BEFORE ROW_NUMBER, otherwise the window
+    -- numbers every row of rps_stock_daily (millions) and DISTINCT keeps
+    -- them all -> td_idx explodes and streaks become absurd.
+    SELECT trade_date,
            ROW_NUMBER() OVER (ORDER BY trade_date) AS td_idx
-    FROM rps_stock_daily
+    FROM (SELECT DISTINCT trade_date FROM rps_stock_daily)
 ),
 qualified AS (
     SELECT

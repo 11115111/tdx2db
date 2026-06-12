@@ -21,9 +21,9 @@ def _build_history_sql(version: str, cfg: dict, start_date: str, end_date: str) 
         # All three RPS periods must meet their thresholds; uses h_div_hhv150
         qual_where = (
             f"r.rps50  >= {c['rps50_min']}\n"
-            f"      AND r.rps120 >= {c['rps120_min']}\n"
-            f"      AND r.rps250 >= {c['rps250_min']}\n"
-            f"      AND r.h_div_hhv150 >= {c['hhv_ratio_min']}"
+            f"      AND r.rps120 > {c['rps120_min']}\n"
+            f"      AND r.rps250 > {c['rps250_min']}\n"
+            f"      AND r.h_div_hhv150 > {c['hhv_ratio_min']}"
         )
         hhv_col = "r.h_div_hhv150"
     else:
